@@ -79,6 +79,9 @@ contract DontBridge {
             tiker: _ticker
         });
 
+        // TODO: Emit a message to the target chain using wormhole confirming the deposit.
+        // This will unlock the equivalent amount of funds on the target chain from the pool.
+
         emit DepositedFunds(msg.sender, msg.value);
     }
 
@@ -99,6 +102,15 @@ contract DontBridge {
         //     revert DontBridge__UserExists();
         // }
 
+        // TODO: Validate the ticker to make sure dontBridge supports it
+
+        if (amount <= 0) {
+            revert DontBridge__NotEnoughFunds();
+        }
+
+        // Pay the user the amount of funds they deposited
+        payable(targetAccount).transfer(amount);
+
         // Create a new UserAccount object to store the user's details
         UserAccount memory userAccount = UserAccount({
             userAddress: _sourceUserAccount,
@@ -110,9 +122,6 @@ contract DontBridge {
 
         // Add the user's account to the userAccounts mapping
         userAccounts[userAccount.userAddress] = userAccount;
-
-        // Pay the user the amount of funds they deposited
-        payable(userAccount.userAddress).transfer(amount);
 
         // Update the user's account to reflect the amount of funds they have withdrawn
         userAccounts[userAccount.userAddress].amount = 0;
