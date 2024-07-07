@@ -2,7 +2,6 @@
 pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Counter} from "../src/Counter.sol";
 
 import {DeployDontBridge} from "../script/DeployDontBridge.s.sol";
 import {DontBridge} from "../src/DontBridge.sol";
@@ -32,7 +31,7 @@ contract DontBridgeTest is Test {
         vm.expectRevert(DontBridge.DontBridge__NotEnoughFunds.selector);
 
         vm.startPrank(USER);
-        dontBridge.depositFunds{value: 0}(
+        dontBridge.sourceChainDeposit{value: 0}(
             targetAddress,
             targetTicker,
             targetChainId
@@ -42,7 +41,7 @@ contract DontBridgeTest is Test {
 
     function testDepositFundsSuccessfully() external {
         vm.startPrank(USER);
-        dontBridge.depositFunds{value: DEPOSIT_AMOUNT}(
+        dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
             targetAddress,
             targetTicker,
             targetChainId
@@ -63,13 +62,13 @@ contract DontBridgeTest is Test {
         vm.expectRevert(DontBridge.DontBridge__UserNotFound.selector);
 
         vm.startPrank(USER);
-        dontBridge.withdrawFunds();
+        dontBridge.sourceChainWithdraw();
         vm.stopPrank();
     }
 
     function testWithdrawFundsSuccessfully() external {
         vm.startPrank(USER);
-        dontBridge.depositFunds{value: DEPOSIT_AMOUNT}(
+        dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
             targetAddress,
             targetTicker,
             targetChainId
@@ -77,11 +76,48 @@ contract DontBridgeTest is Test {
         vm.stopPrank();
 
         vm.startPrank(USER);
-        dontBridge.withdrawFunds();
+        dontBridge.sourceChainWithdraw();
         vm.stopPrank();
 
         // Check that the user's deposit has been updated
         uint256 userDepositBalance = dontBridge.getUserDeposits(address(USER));
+
+        assertEq(
+            userDepositBalance,
+            0,
+            "User deposit balance should be equal to 0 after withdrawal"
+        );
+    }
+
+    function testTargetChainWithdraw() external {
+        vm.startPrank(USER);
+        dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
+            targetAddress,
+            targetTicker,
+            targetChainId
+        );
+        vm.stopPrank();
+
+        // Check that the user's deposit has been updated
+        uint256 userDepositBalance = dontBridge.getUserDeposits(address(USER));
+
+        assertEq(
+            userDepositBalance,
+            DEPOSIT_AMOUNT,
+            "User deposit balance should be equal to the deposit amount"
+        );
+
+        // Withdraw funds from the funds to the user on the target chain
+        dontBridge.targetChainSendFunds(
+            address(USER),
+            targetAddress,
+            DEPOSIT_AMOUNT,
+            targetTicker,
+            targetChainId
+        );
+
+        // Check that the user's deposit has been updated
+        userDepositBalance = dontBridge.getUserDeposits(address(USER));
 
         assertEq(
             userDepositBalance,

@@ -22,6 +22,13 @@ contract DontBridge {
 
     event WithdrawnFunds(address indexed userAddress, uint256 indexed amount);
 
+    // struct Ticker {
+    //     string name;
+    //     string sourceAsset;
+    //     string targetAsset;
+    //     uint256 price;
+    // }
+
     struct UserAccount {
         address userAddress;
         address targetAccountAddress;
@@ -31,6 +38,8 @@ contract DontBridge {
     }
 
     mapping(address user => UserAccount) private userAccounts;
+
+    // mapping(address user => Ticker) private tickers;
 
     /**
      * @dev Deposits Ether into the contract.
@@ -43,7 +52,7 @@ contract DontBridge {
      *
      * Todo: Emit a message to the target chain using wormhole confirming the deposit.
      */
-    function depositFunds(
+    function sourceChainDeposit(
         address _targetAccountAddress,
         string memory _ticker,
         uint256 _targetChainId
@@ -51,6 +60,9 @@ contract DontBridge {
         if (msg.value <= 0) {
             revert DontBridge__NotEnoughFunds();
         }
+
+        // Validate the ticker to make sure dontBridge supports it
+        // Todo: Add a ticker struct and validate the ticker
 
         userAccounts[msg.sender] = UserAccount({
             userAddress: msg.sender,
@@ -68,7 +80,7 @@ contract DontBridge {
      * Todo: This function will be called by the wormhole contract on the target chain.
      * So add a modifier to check if the caller is the wormhole contract.
      */
-    function sendUserFunds(
+    function targetChainSendFunds(
         address _sourceUserAccount,
         address targetAccount,
         uint256 amount,
@@ -88,11 +100,14 @@ contract DontBridge {
         userAccounts[userAccount.userAddress] = userAccount;
 
         // Pay the user the amount of funds they deposited
-        payable(userAccount.userAddress).transfer(userAccount.amount);
+        payable(userAccount.userAddress).transfer(amount);
+
+        // Update the user's account to reflect the amount of funds they have withdrawn
+        userAccounts[userAccount.userAddress].amount = 0;
 
         emit SentFunds(
             userAccount.userAddress,
-            userAccount.amount,
+            amount,
             userAccount.targetChainId
         );
     }
@@ -108,7 +123,7 @@ contract DontBridge {
      * Todo: Emit a message to the target chain using wormhole confirming the withdrawal.
      * Todo: Add a modifier so that only the withdraw happens only if the message is confirmed on the target chain.
      */
-    function withdrawFunds() external {
+    function sourceChainWithdraw() external {
         UserAccount memory userAccount = userAccounts[msg.sender];
 
         if (userAccount.userAddress == address(0)) {
@@ -143,4 +158,8 @@ contract DontBridge {
     ) public view returns (UserAccount memory) {
         return userAccounts[user];
     }
+
+    // function getUserTickers(address user) public view returns (Ticker memory) {
+    //     return tickers[user];
+    // }
 }
