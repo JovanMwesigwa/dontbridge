@@ -12,7 +12,7 @@ contract DontBridgeTest is Test {
     uint256 public constant DEPOSIT_AMOUNT = 1 ether;
     uint256 public constant USER_STARTING_BALANCE = 10 ether;
 
-    address public targetAddress = address(0x123);
+    address public targetAddress = address(2);
     uint256 public targetChainId = 2567;
     string public targetTicker = "ETH/SOL";
 
@@ -123,6 +123,39 @@ contract DontBridgeTest is Test {
             userDepositBalance,
             0,
             "User deposit balance should be equal to 0 after withdrawal"
+        );
+    }
+
+    function testTargetChainRepayFunds() external {
+        vm.startPrank(USER);
+        dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
+            targetAddress,
+            targetTicker,
+            targetChainId
+        );
+        vm.stopPrank();
+
+        // Check that the user's deposit has been updated
+        uint256 userDepositBalance = dontBridge.getUserDeposits(address(USER));
+
+        assertEq(
+            userDepositBalance,
+            DEPOSIT_AMOUNT,
+            "User deposit balance should be equal to the deposit amount"
+        );
+
+        vm.startPrank(USER);
+        // Repay funds to the user on the target chain
+        dontBridge.targetChainRepayFunds{value: DEPOSIT_AMOUNT}();
+        vm.stopPrank();
+
+        // Check that the user's deposit has been updated
+        userDepositBalance = dontBridge.getUserDeposits(address(USER));
+
+        assertEq(
+            userDepositBalance,
+            0,
+            "User deposit balance should be equal to 0 after repayment"
         );
     }
 }

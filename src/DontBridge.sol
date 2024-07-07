@@ -11,10 +11,17 @@ pragma solidity ^0.8.13;
 contract DontBridge {
     error DontBridge__NotEnoughFunds();
     error DontBridge__UserNotFound();
+    error DontBridge__UserExists();
 
     event DepositedFunds(address indexed userAddress, uint256 indexed amount);
 
     event SentFunds(
+        address indexed userAddress,
+        uint256 indexed amount,
+        uint256 indexed targetChainId
+    );
+
+    event RepaidFunds(
         address indexed userAddress,
         uint256 indexed amount,
         uint256 indexed targetChainId
@@ -87,6 +94,11 @@ contract DontBridge {
         string memory ticker,
         uint256 sourceChain
     ) external payable {
+        // // Check if the userAccount exists
+        // if (userAccounts[_sourceUserAccount].userAddress == address(0)) {
+        //     revert DontBridge__UserExists();
+        // }
+
         // Create a new UserAccount object to store the user's details
         UserAccount memory userAccount = UserAccount({
             userAddress: _sourceUserAccount,
@@ -106,6 +118,43 @@ contract DontBridge {
         userAccounts[userAccount.userAddress].amount = 0;
 
         emit SentFunds(
+            userAccount.userAddress,
+            amount,
+            userAccount.targetChainId
+        );
+    }
+
+    /**
+     * @dev This function allows the user to repay the funds they have withdrawn from the pool.
+     * After the user has repaid the funds, the user's account will be deleted from the userAccounts mapping.
+     * And send a message to the source chain confirming the repayment, which will then unlock the equivalent amount of funds on the source chain from the pool.
+     */
+    function targetChainRepayFunds() external payable {
+        UserAccount memory userAccount = userAccounts[msg.sender];
+
+        // Check if the userAccount exists
+        if (userAccount.userAddress == address(0)) {
+            revert DontBridge__UserNotFound();
+        }
+
+        uint256 amount = msg.value;
+
+        // Todo: Validate the ticker to make sure dontBridge supports it
+
+        // Pay the user the amount of funds they deposited
+        payable(userAccount.userAddress).transfer(amount);
+
+        // Update the user's account to reflect the amount of funds they have withdrawn
+        userAccounts[userAccount.userAddress].amount = amount;
+
+        // Todo: Emit a message to the source chain using wormhole confirming the repayment.
+
+        // Only delete the user's account if the user has repaid the full amount
+        if (userAccount.amount == 0) {
+            delete userAccounts[userAccount.userAddress];
+        }
+
+        emit RepaidFunds(
             userAccount.userAddress,
             amount,
             userAccount.targetChainId
