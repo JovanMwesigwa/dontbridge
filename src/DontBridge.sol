@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+import {IWormholeRelayer} from "@wormhole-solidity-sdk/interfaces/IWormholeRelayer.sol";
+
 /**
  * @title DontBridge
  * @dev This contract is a simple contract that allows users to deposit and lock funds into it,
@@ -12,6 +14,7 @@ contract DontBridge {
     error DontBridge__NotEnoughFunds();
     error DontBridge__UserNotFound();
     error DontBridge__UserExists();
+    error DontBridge__InvalidArguments();
 
     event DepositedFunds(address indexed userAddress, uint256 indexed amount);
 
@@ -28,6 +31,15 @@ contract DontBridge {
     );
 
     event WithdrawnFunds(address indexed userAddress, uint256 indexed amount);
+
+    IWormholeRelayer public immutable i_wormholeRelayer;
+
+    // Wormhole variables
+    uint256 constant GAS_LIMIT = 100_000; // Increase this value
+
+    constructor(address wormholeRelayerAddress) {
+        i_wormholeRelayer = IWormholeRelayer(wormholeRelayerAddress);
+    }
 
     // struct Ticker {
     //     string name;
@@ -62,11 +74,17 @@ contract DontBridge {
     function sourceChainDeposit(
         address _targetAccountAddress,
         string memory _ticker,
-        uint256 _targetChainId
+        uint256 _targetChainId,
+        uint16 s_wormholeTargetChain,
+        address s_receiverContractAddress
     ) external payable {
         if (msg.value <= 0) {
             revert DontBridge__NotEnoughFunds();
         }
+
+        uint256 cost = getCrossChainQuote(s_wormholeTargetChain);
+
+        // Todo: Check if the user has enough funds to pay for the cross chain message
 
         // Validate the ticker to make sure dontBridge supports it
         // Todo: Add a ticker struct and validate the ticker
@@ -79,8 +97,24 @@ contract DontBridge {
             tiker: _ticker
         });
 
-        // TODO: Emit a message to the target chain using wormhole confirming the deposit.
+        // Emit a message to the target chain using wormhole confirming the deposit.
         // This will unlock the equivalent amount of funds on the target chain from the pool.
+        // Encode / Hide the message which is an instance of the userAccount struct
+        bytes memory payload = abi.encode(userAccounts[msg.sender], msg.sender);
+
+        uint16 refundChain = 10005; // Todo: Make it dynamic to come from the source chain it's deployed to
+
+        address refundAddress = address(this);
+
+        i_wormholeRelayer.sendPayloadToEvm{value: cost}(
+            s_wormholeTargetChain,
+            s_receiverContractAddress,
+            payload,
+            0,
+            GAS_LIMIT,
+            refundChain,
+            refundAddress
+        );
 
         emit DepositedFunds(msg.sender, msg.value);
     }
@@ -200,6 +234,18 @@ contract DontBridge {
         delete userAccounts[msg.sender];
 
         emit WithdrawnFunds(msg.sender, userAccount.amount);
+    }
+
+    //  WORMHOLE FUNCTIONS
+    function getCrossChainQuote(
+        uint16 targetChain
+    ) public view returns (uint256 cost) {
+        (cost, ) = i_wormholeRelayer.quoteEVMDeliveryPrice(
+            targetChain,
+            0,
+            GAS_LIMIT
+        );
+        return cost;
     }
 
     // View / Pure functions

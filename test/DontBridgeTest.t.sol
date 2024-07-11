@@ -12,8 +12,12 @@ contract DontBridgeTest is Test {
     uint256 public constant DEPOSIT_AMOUNT = 1 ether;
     uint256 public constant USER_STARTING_BALANCE = 10 ether;
 
-    address public targetAddress = address(2);
+    address public targetAccountAddress = address(2);
     uint256 public targetChainId = 2567;
+
+    // Optimism vars
+    uint16 public wormholeTargetChainId = 10005;
+    address public targetChainAddress = address(3);
     string public targetTicker = "ETH/SOL";
 
     address public USER;
@@ -32,9 +36,11 @@ contract DontBridgeTest is Test {
 
         vm.startPrank(USER);
         dontBridge.sourceChainDeposit{value: 0}(
-            targetAddress,
+            targetAccountAddress,
             targetTicker,
-            targetChainId
+            targetChainId,
+            wormholeTargetChainId,
+            targetChainAddress
         );
         vm.stopPrank();
     }
@@ -42,9 +48,11 @@ contract DontBridgeTest is Test {
     function testDepositFundsSuccessfully() external {
         vm.startPrank(USER);
         dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
-            targetAddress,
+            targetAccountAddress,
             targetTicker,
-            targetChainId
+            targetChainId,
+            wormholeTargetChainId,
+            targetChainAddress
         );
         vm.stopPrank();
 
@@ -69,9 +77,11 @@ contract DontBridgeTest is Test {
     function testWithdrawFundsSuccessfully() external {
         vm.startPrank(USER);
         dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
-            targetAddress,
+            targetAccountAddress,
             targetTicker,
-            targetChainId
+            targetChainId,
+            wormholeTargetChainId,
+            targetChainAddress
         );
         vm.stopPrank();
 
@@ -92,9 +102,11 @@ contract DontBridgeTest is Test {
     function testTargetChainWithdraw() external {
         vm.startPrank(USER);
         dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
-            targetAddress,
+            targetAccountAddress,
             targetTicker,
-            targetChainId
+            targetChainId,
+            wormholeTargetChainId,
+            targetChainAddress
         );
         vm.stopPrank();
 
@@ -110,7 +122,7 @@ contract DontBridgeTest is Test {
         // Withdraw funds from the funds to the user on the target chain
         dontBridge.targetChainSendFunds(
             address(USER),
-            targetAddress,
+            targetAccountAddress,
             DEPOSIT_AMOUNT,
             targetTicker,
             targetChainId
@@ -129,9 +141,11 @@ contract DontBridgeTest is Test {
     function testTargetChainRepayFunds() external {
         vm.startPrank(USER);
         dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
-            targetAddress,
+            targetAccountAddress,
             targetTicker,
-            targetChainId
+            targetChainId,
+            wormholeTargetChainId,
+            targetChainAddress
         );
         vm.stopPrank();
 
