@@ -2,6 +2,9 @@
 pragma solidity ^0.8.13;
 
 import {IWormholeRelayer} from "@wormhole-solidity-sdk/interfaces/IWormholeRelayer.sol";
+import {IWormholeReceiver} from "@wormhole-solidity-sdk/interfaces/IWormholeReceiver.sol";
+import {DontBridgeGetters} from "./DontBridgeGetters.sol";
+import {IWormhole} from "@wormhole-solidity-sdk/interfaces/IWormhole.sol";
 
 /**
  * @title DontBridge
@@ -10,18 +13,20 @@ import {IWormholeRelayer} from "@wormhole-solidity-sdk/interfaces/IWormholeRelay
  * unlock the equivalent amount of funds on the target chain from the pool.
  * @author github.com/JovanMwesigwa
  */
-contract DontBridge {
+contract DontBridge is DontBridgeGetters, IWormholeReceiver {
     error DontBridge__NotEnoughFunds();
     error DontBridge__UserNotFound();
     error DontBridge__UserExists();
     error DontBridge__InvalidArguments();
+    error DontBridge__NotAllowed();
 
     event DepositedFunds(address indexed userAddress, uint256 indexed amount);
 
     event SentFunds(
         address indexed userAddress,
         uint256 indexed amount,
-        uint256 indexed targetChainId
+        uint256 indexed targetChainId,
+        uint16 sourceChain
     );
 
     event RepaidFunds(
@@ -32,33 +37,40 @@ contract DontBridge {
 
     event WithdrawnFunds(address indexed userAddress, uint256 indexed amount);
 
+    event GasUsage(string message, uint256 gasLeft);
+
     IWormholeRelayer public immutable i_wormholeRelayer;
 
     // Wormhole variables
     uint256 constant GAS_LIMIT = 100_000; // Increase this value
+    address public s_owner;
+
+    string public latestMessage;
 
     constructor(address wormholeRelayerAddress) {
         i_wormholeRelayer = IWormholeRelayer(wormholeRelayerAddress);
+        s_owner = msg.sender;
     }
-
-    // struct Ticker {
-    //     string name;
-    //     string sourceAsset;
-    //     string targetAsset;
-    //     uint256 price;
-    // }
 
     struct UserAccount {
         address userAddress;
         address targetAccountAddress;
-        uint256 targetChainId;
         uint256 amount;
-        string tiker; // Will be changed to a struct of the token details and prices
+    }
+
+    struct DestinationMessage {
+        address userAddress;
+        uint256 amount;
+        string ticker;
     }
 
     mapping(address user => UserAccount) private userAccounts;
 
     // mapping(address user => Ticker) private tickers;
+
+    //  ########################################################################################
+    //  ###############               SOURCE CHAIN FUNCTIONS                    ################
+    //  ########################################################################################
 
     /**
      * @dev Deposits Ether into the contract.
@@ -74,7 +86,7 @@ contract DontBridge {
     function sourceChainDeposit(
         address _targetAccountAddress,
         string memory _ticker,
-        uint256 _targetChainId,
+        uint16 _refundChainId,
         uint16 s_wormholeTargetChain,
         address s_receiverContractAddress
     ) external payable {
@@ -92,20 +104,27 @@ contract DontBridge {
         userAccounts[msg.sender] = UserAccount({
             userAddress: msg.sender,
             targetAccountAddress: _targetAccountAddress,
-            targetChainId: _targetChainId,
-            amount: msg.value,
-            tiker: _ticker
+            amount: msg.value
         });
 
         // Emit a message to the target chain using wormhole confirming the deposit.
         // This will unlock the equivalent amount of funds on the target chain from the pool.
         // Encode / Hide the message which is an instance of the userAccount struct
-        bytes memory payload = abi.encode(userAccounts[msg.sender], msg.sender);
+        // bytes memory payload = abi.encode(userAccounts[msg.sender], msg.sender);
 
-        uint16 refundChain = 10005; // Todo: Make it dynamic to come from the source chain it's deployed to
+        DestinationMessage memory destinationMessage = DestinationMessage({
+            userAddress: _targetAccountAddress,
+            amount: msg.value,
+            ticker: _ticker
+        });
+        bytes memory payload = abi.encode(destinationMessage, msg.sender);
 
-        address refundAddress = address(this);
+        // uint16 refundChain = 10005; // Todo: Make it dynamic to come from the source chain it's deployed to
+        uint16 refundChain = _refundChainId; // Todo: Make it dynamic to come from the source chain it's deployed to
 
+        address refundAddress = msg.sender;
+
+        // Todo: Change, Instead of using the sendPayloadToEvm function, use the specialised relayer to publish the message to non-EVM chains
         i_wormholeRelayer.sendPayloadToEvm{value: cost}(
             s_wormholeTargetChain,
             s_receiverContractAddress,
@@ -117,91 +136,6 @@ contract DontBridge {
         );
 
         emit DepositedFunds(msg.sender, msg.value);
-    }
-
-    /**
-     * @dev Receives the message from the target chain confirming the deposit. and unlocks the equivalent amount of funds on the target chain from the pool.
-     * Todo: This function will be called by the wormhole contract on the target chain.
-     * So add a modifier to check if the caller is the wormhole contract.
-     */
-    function targetChainSendFunds(
-        address _sourceUserAccount,
-        address targetAccount,
-        uint256 amount,
-        string memory ticker,
-        uint256 sourceChain
-    ) external payable {
-        // // Check if the userAccount exists
-        // if (userAccounts[_sourceUserAccount].userAddress == address(0)) {
-        //     revert DontBridge__UserExists();
-        // }
-
-        // TODO: Validate the ticker to make sure dontBridge supports it
-
-        if (amount <= 0) {
-            revert DontBridge__NotEnoughFunds();
-        }
-
-        // Pay the user the amount of funds they deposited
-        payable(targetAccount).transfer(amount);
-
-        // Create a new UserAccount object to store the user's details
-        UserAccount memory userAccount = UserAccount({
-            userAddress: _sourceUserAccount,
-            targetAccountAddress: targetAccount,
-            targetChainId: sourceChain,
-            amount: amount,
-            tiker: ticker
-        });
-
-        // Add the user's account to the userAccounts mapping
-        userAccounts[userAccount.userAddress] = userAccount;
-
-        // Update the user's account to reflect the amount of funds they have withdrawn
-        userAccounts[userAccount.userAddress].amount = 0;
-
-        emit SentFunds(
-            userAccount.userAddress,
-            amount,
-            userAccount.targetChainId
-        );
-    }
-
-    /**
-     * @dev This function allows the user to repay the funds they have withdrawn from the pool.
-     * After the user has repaid the funds, the user's account will be deleted from the userAccounts mapping.
-     * And send a message to the source chain confirming the repayment, which will then unlock the equivalent amount of funds on the source chain from the pool.
-     */
-    function targetChainRepayFunds() external payable {
-        UserAccount memory userAccount = userAccounts[msg.sender];
-
-        // Check if the userAccount exists
-        if (userAccount.userAddress == address(0)) {
-            revert DontBridge__UserNotFound();
-        }
-
-        uint256 amount = msg.value;
-
-        // Todo: Validate the ticker to make sure dontBridge supports it
-
-        // Pay the user the amount of funds they deposited
-        payable(userAccount.userAddress).transfer(amount);
-
-        // Update the user's account to reflect the amount of funds they have withdrawn
-        userAccounts[userAccount.userAddress].amount = amount;
-
-        // Todo: Emit a message to the source chain using wormhole confirming the repayment.
-
-        // Only delete the user's account if the user has repaid the full amount
-        if (userAccount.amount == 0) {
-            delete userAccounts[userAccount.userAddress];
-        }
-
-        emit RepaidFunds(
-            userAccount.userAddress,
-            amount,
-            userAccount.targetChainId
-        );
     }
 
     /**
@@ -236,6 +170,88 @@ contract DontBridge {
         emit WithdrawnFunds(msg.sender, userAccount.amount);
     }
 
+    //  ########################################################################################
+    //  ###############               TARGET CHAIN FUNCTIONS                    ################
+    //  ########################################################################################
+
+    /**
+     *
+     * @dev This is the receive function receives the message from the wormhole relayer on the source chain confirming the deposit.
+        // Todo: Change, Instead of using the receiveWormholeMessage function, use the specialised relayer to receive messages from non-EVM chains
+     */
+    function receiveWormholeMessages(
+        bytes memory payload,
+        bytes[] memory,
+        bytes32,
+        uint16 sourceChain,
+        bytes32
+    ) public payable override {
+        address relayerAddress = address(i_wormholeRelayer);
+
+        if (msg.sender != relayerAddress) {
+            revert DontBridge__NotAllowed();
+        }
+
+        (DestinationMessage memory destinationMessage, address sender) = abi
+            .decode(payload, (DestinationMessage, address));
+
+        uint256 amount = destinationMessage.amount;
+
+        if (amount > address(this).balance) {
+            revert DontBridge__NotEnoughFunds();
+        }
+
+        address targetAccount = destinationMessage.userAddress;
+
+        (bool success, ) = targetAccount.call{value: amount}("");
+
+        if (!success) {
+            revert DontBridge__NotEnoughFunds();
+        }
+
+        // Save the user's account to the userAccounts mapping
+        userAccounts[targetAccount] = UserAccount({
+            userAddress: targetAccount,
+            targetAccountAddress: sender,
+            amount: amount
+        });
+
+        emit SentFunds(targetAccount, amount, 0, sourceChain);
+    }
+
+    /**
+     * @dev This function allows the user to repay the funds they have withdrawn from the pool.
+     * After the user has repaid the funds, the user's account will be deleted from the userAccounts mapping.
+     * And send a message to the source chain confirming the repayment, which will then unlock the equivalent amount of funds on the source chain from the pool.
+     */
+    function targetChainRepayFunds() external payable {
+        UserAccount memory userAccount = userAccounts[msg.sender];
+
+        // Check if the userAccount exists
+        if (userAccount.userAddress == address(0)) {
+            revert DontBridge__UserNotFound();
+        }
+
+        uint256 amount = msg.value;
+
+        // Todo: Validate the ticker to make sure dontBridge supports it
+
+        // Pay the user the amount of funds they deposited
+        payable(userAccount.userAddress).transfer(amount);
+
+        // Update the user's account to reflect the amount of funds they have withdrawn
+        userAccounts[userAccount.userAddress].amount = amount;
+
+        // Todo: Emit a message to the source chain using wormhole confirming the repayment.
+
+        // Only delete the user's account if the user has repaid the full amount
+        if (userAccount.amount == 0) {
+            delete userAccounts[userAccount.userAddress];
+        }
+
+        emit RepaidFunds(userAccount.userAddress, amount, 0);
+    }
+
     //  WORMHOLE FUNCTIONS
     function getCrossChainQuote(
         uint16 targetChain
@@ -248,10 +264,23 @@ contract DontBridge {
         return cost;
     }
 
-    // View / Pure functions
-    function getBalance() public view returns (uint256) {
-        return address(this).balance;
+    modifier onlyOwner() {
+        if (msg.sender != s_owner) {
+            revert DontBridge__NotAllowed();
+        }
+        _;
     }
+
+    // Add a temporary function that withdraws the contract's balance
+    function withdrawContractBalance() external onlyOwner {
+        payable(msg.sender).transfer(address(this).balance);
+    }
+
+    receive() external payable {
+        emit DepositedFunds(msg.sender, msg.value);
+    }
+
+    // View / Pure functions
 
     function getUserDeposits(address user) public view returns (uint256) {
         return userAccounts[user].amount;

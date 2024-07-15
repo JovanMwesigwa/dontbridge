@@ -14,6 +14,7 @@ contract DontBridgeTest is Test {
 
     address public targetAccountAddress = address(2);
     uint256 public targetChainId = 2567;
+    uint16 wormeholeTargetChainId = 10005;
 
     // Optimism vars
     uint16 public wormholeTargetChainId = 10005;
@@ -38,7 +39,7 @@ contract DontBridgeTest is Test {
         dontBridge.sourceChainDeposit{value: 0}(
             targetAccountAddress,
             targetTicker,
-            targetChainId,
+            10005,
             wormholeTargetChainId,
             targetChainAddress
         );
@@ -50,7 +51,7 @@ contract DontBridgeTest is Test {
         dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
             targetAccountAddress,
             targetTicker,
-            targetChainId,
+            wormeholeTargetChainId,
             wormholeTargetChainId,
             targetChainAddress
         );
@@ -79,7 +80,7 @@ contract DontBridgeTest is Test {
         dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
             targetAccountAddress,
             targetTicker,
-            targetChainId,
+            wormeholeTargetChainId,
             wormholeTargetChainId,
             targetChainAddress
         );
@@ -104,7 +105,7 @@ contract DontBridgeTest is Test {
         dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
             targetAccountAddress,
             targetTicker,
-            targetChainId,
+            wormeholeTargetChainId,
             wormholeTargetChainId,
             targetChainAddress
         );
@@ -120,13 +121,13 @@ contract DontBridgeTest is Test {
         );
 
         // Withdraw funds from the funds to the user on the target chain
-        dontBridge.targetChainSendFunds(
-            address(USER),
-            targetAccountAddress,
-            DEPOSIT_AMOUNT,
-            targetTicker,
-            targetChainId
-        );
+        // dontBridge.targetChainSendFunds(
+        //     address(USER),
+        //     targetAccountAddress,
+        //     DEPOSIT_AMOUNT,
+        //     targetTicker,
+        //     targetChainId
+        // );
 
         // Check that the user's deposit has been updated
         userDepositBalance = dontBridge.getUserDeposits(address(USER));
@@ -143,7 +144,7 @@ contract DontBridgeTest is Test {
         dontBridge.sourceChainDeposit{value: DEPOSIT_AMOUNT}(
             targetAccountAddress,
             targetTicker,
-            targetChainId,
+            wormeholeTargetChainId,
             wormholeTargetChainId,
             targetChainAddress
         );

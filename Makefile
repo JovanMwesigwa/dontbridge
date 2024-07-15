@@ -28,13 +28,17 @@ anvil :; anvil -m 'test test test test test test test test test test test junk' 
 deploy:
 	@forge script script/DeployDontBridge.s.sol:DeployDontBridge $(NETWORK_ARGS)
 
-NETWORK_ARGS := --rpc-url http://localhost:8545 --private-key $(DEFAULT_ANVIL_KEY) --broadcast
+# NETWORK_ARGS := --rpc-url http://localhost:8545 --private-key $(DEFAULT_ANVIL_KEY) --broadcast
 
-ifeq ($(findstring --network sepolia,$(ARGS)),--network sepolia)
-	NETWORK_ARGS := --rpc-url $(SEPOLIA_RPC_URL) --account $(ACCOUNT) --broadcast --verify --etherscan-api-key $(ETHERSCAN_API_KEY) -vvvv
+NETWORK_ARGS := --rpc-url $(ARBI_SEPOLIA_RPC_URL) --private-key $(PRIVATE_KEY) --broadcast --verify --etherscan-api-key $(ARBISCAN_API_KEY) -vvvv
+
+OP_NETWORK_ARGS := --rpc-url $(OP_SEPOLIA_RPC_URL) --private-key $(PRIVATE_KEY) --broadcast --verify --etherscan-api-key $(OPTISCAN_API_KEY) -vvvv
+
+ifeq ($(findstring --network opt ,$(ARGS)),--network sepolia)
+	NETWORK_ARGS := --rpc-url $(OP_SEPOLIA_RPC_URL) --private-key $(PRIVATE_KEY) --broadcast --verify --etherscan-api-key $(OPTISCAN_API_KEY) -vvvv
 endif
 
 
-deploy-sepolia:
-	@forge script script/DeployDontBridge.s.sol:DeployDontBridge $(NETWORK_ARGS)
+deploy-op:
+	@forge script script/DeployDontBridge.s.sol:DeployDontBridge $(OP_NETWORK_ARGS)
 
